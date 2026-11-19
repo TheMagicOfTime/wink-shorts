@@ -5,6 +5,11 @@ const template = document.querySelector('#clip');
 const panel = document.querySelector('#panel');
 const shareDialog = document.querySelector('#share-dialog');
 const clips = window.WINK_CLIPS;
+const supportsAV1 = Boolean(document.createElement('video').canPlayType('video/mp4; codecs="av01.0.08M.10"'));
+const fallbackClips = new Set();
+function mediaSource(clip) {
+  return supportsAV1 && clip.av1 && !fallbackClips.has(clip.id) ? clip.av1 : clip.src;
+}
 const prefs = 'wink-shorts-fisher.';
 const read = key => { try { return localStorage.getItem(prefs + key); } catch { return null; } };
 const save = (key, value) => { try { localStorage.setItem(prefs + key, value); } catch {} };
@@ -143,9 +148,18 @@ const rows = clips.map((clip, i) => {
     icon(play, 'pause', 'Приостановить');
   });
   video.addEventListener('pause', () => icon(play, 'play', 'Воспроизвести'));
-  video.addEventListener('error', () => { if (video.hasAttribute('src')) retry.hidden = false; });
+  video.addEventListener('error', () => {
+    if (!video.hasAttribute('src')) return;
+    if (clip.av1 && video.getAttribute('src') === clip.av1) {
+      fallbackClips.add(clip.id);
+      video.src = clip.src;
+      if (i === active && !shareDialog.open && !panel.open) start(video);
+    } else {
+      retry.hidden = false;
+    }
+  });
   video.addEventListener('loadeddata', () => { retry.hidden = true; });
-  retry.onclick = () => { video.src = clip.src; start(video); };
+  retry.onclick = () => { video.src = mediaSource(clip); start(video); };
   video.addEventListener('loadedmetadata', () => { if (Number.isFinite(video.duration)) seek.max = video.duration; });
   video.addEventListener('timeupdate', () => {
     if (!Number.isFinite(video.duration)) return;
@@ -186,7 +200,7 @@ function activate(index) {
     if (i !== index) video.pause();
     if (Math.abs(i - index) <= 1 && !video.hasAttribute('src')) {
       video.preload = i === index ? 'auto' : 'metadata';
-      video.src = clips[i].src;
+      video.src = mediaSource(clips[i]);
     } else if (Math.abs(i - index) > 1 && video.hasAttribute('src')) {
       video.removeAttribute('src');
       video.load();
