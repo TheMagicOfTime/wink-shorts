@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000"><title>Wink — Shorts · Фишер</title>
+<link rel="stylesheet" href="player.css?v=browse-7"><script src="clips.js?v=discussion-1" defer></script><script src="comments.js?v=browse-7" defer></script><script src="player.js?v=browse-7" defer></script>
+</head><body>
+<svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<symbol id="play" viewBox="0 0 24 24"><path d="m8 4 13 8-13 8Z" fill="currentColor" stroke="none"/></symbol>
+<symbol id="pause" viewBox="0 0 24 24"><path d="M8 5v14m8-14v14" stroke-width="3.5"/></symbol>
+<symbol id="heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0l-1 1-1-1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></symbol>
+<symbol id="chat" viewBox="0 0 24 24"><path d="M4 4h16a1.5 1.5 0 0 1 1.5 1.5v10A1.5 1.5 0 0 1 20 17h-6l-5.5 4v-4H4a1.5 1.5 0 0 1-1.5-1.5v-10A1.5 1.5 0 0 1 4 4Z"/><path d="M7 9h10M7 12h6"/></symbol>
+<symbol id="send" viewBox="0 0 24 24"><path d="m13.5 3 8 7.5-8 7v-4C8.3 13.4 4.6 15.3 2 20c.3-7.2 3.9-12 11.5-12.7Z"/></symbol>
+<symbol id="sound" viewBox="0 0 24 24"><path d="m11 5-5 4H3v6h3l5 4zM15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
+<symbol id="muted" viewBox="0 0 24 24"><path d="m11 5-5 4H3v6h3l5 4zM15 9l6 6m0-6-6 6"/></symbol>
+<symbol id="expand" viewBox="0 0 24 24"><path d="M3 9V3h6m6 0h6v6m0 6v6h-6m-6 0H3v-6"/></symbol>
+<symbol id="external" viewBox="0 0 24 24"><path d="M6 18 18 6M7 6h11v11"/></symbol>
+<symbol id="sort-lines" viewBox="0 0 24 24"><path d="M3 6h18M3 12h12M3 18h6"/></symbol>
+<symbol id="thumb" viewBox="0 0 24 24"><path d="M3 11h4v10H3zM7 12l6-8c.5-.7 1.9-.4 2 1l-.6 5h5.1a2 2 0 0 1 2 2.5l-1.8 6.7A2.5 2.5 0 0 1 17.3 21H10l-3-1"/></symbol>
+<symbol id="chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="dots" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></g></symbol>
+<symbol id="profile" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><circle cx="12" cy="8" r="4"/><path d="M3 22a9 9 0 0 1 18 0"/></g></symbol>
+<symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+</svg>
+<header><a class="brand" href="#top" aria-label="Wink Shorts, к началу"><i class="brand-play" aria-hidden="true"><svg><use href="#play"/></svg></i><b>Wink</b><span>Shorts</span></a></header>
+<main id="feed" aria-label="Shorts"></main>
+<template id="clip">
+<section class="reel"><div class="stage">
+<div class="screen"><video playsinline loop preload="none"></video>
+<div class="top"><button class="play orange" aria-label="Воспроизвести"><svg><use href="#play"/></svg></button><div class="sound-group"><button class="sound" aria-label="Включить звук"><svg><use href="#muted"/></svg></button><input class="volume" type="range" min="0" max="1" step=".05" aria-label="Громкость"></div><button class="expand" aria-label="На весь экран"><svg><use href="#expand"/></svg></button></div>
+<div class="meta"><a href="https://wink.ru/seasons/fisher-sezon-1-year-2023" target="_blank" rel="noopener noreferrer">Фишер <svg><use href="#external"/></svg></a><h2></h2></div>
+<input class="seek" type="range" value="0" min="0" max="1" step=".01" aria-label="Перемотка">
+<button class="retry" hidden>Повторить загрузку</button></div>
+<aside aria-label="Действия с роликом">
+<button class="like rail-button" aria-label="Лайк" aria-pressed="false"><i class="action"><svg><use href="#heart"/></svg></i><span class="count"></span></button>
+<button class="comments rail-button" aria-label="Открыть комментарии"><i class="action"><svg><use href="#chat"/></svg></i><span class="count"></span></button>
+<button class="share rail-button" aria-label="Поделиться роликом"><i class="action"><svg><use href="#send"/></svg></i><span>Поделиться</span></button>
+</aside>
+</div></section></template>
+<dialog id="panel" class="drawer" aria-labelledby="panel-title"><div class="panel-head"><h2 id="panel-title" tabindex="-1" autofocus>Комментарии</h2><span id="thread-count" class="comments-only"></span>
+<label class="sort-control comments-only" title="Сортировка"><svg aria-hidden="true"><use href="#sort-lines"/></svg><select aria-label="Сортировка комментариев"><option value="popular">Сначала популярные</option><option value="newest">Сначала новые</option></select></label>
+<button id="close-panel" aria-label="Закрыть"><svg><use href="#close"/></svg></button></div><div id="content"></div>
+<form class="composer comments-only"><span class="my-avatar"><svg aria-hidden="true"><use href="#profile"/></svg></span><div><div class="reply-target" hidden><span></span><button type="button" aria-label="Отменить ответ">×</button></div><input aria-label="Введите комментарий" placeholder="Введите комментарий" maxlength="2000" autocomplete="off"></div><button type="submit" aria-label="Отправить" disabled><svg><use href="#send"/></svg></button></form></dialog>
+<dialog id="share-dialog" aria-labelledby="share-title"><div class="panel-head"><h2 id="share-title">Поделиться</h2><button class="close-share" aria-label="Закрыть" autofocus><svg><use href="#close"/></svg></button></div><div id="share-content"></div></dialog>
+</body></html>
