@@ -156,9 +156,20 @@ const rows = clips.map((clip, i) => {
       if (i === active && !shareDialog.open && !panel.open) start(video);
     } else {
       retry.hidden = false;
+      if (i > active && i <= active + 2) advancePreloadQueue();
     }
   });
   video.addEventListener('loadeddata', () => { retry.hidden = true; });
+  for (const event of ['progress', 'suspend', 'canplay', 'seeked', 'timeupdate']) {
+    video.addEventListener(event, () => {
+      if (i >= active && i < active + 2) advancePreloadQueue();
+    });
+  }
+  for (const event of ['seeking', 'waiting']) {
+    video.addEventListener(event, () => {
+      if (i === active && !bufferReady(video)) advancePreloadQueue(true);
+    });
+  }
   retry.onclick = () => { video.src = mediaSource(clip); start(video); };
   video.addEventListener('loadedmetadata', () => { if (Number.isFinite(video.duration)) seek.max = video.duration; });
   video.addEventListener('timeupdate', () => {
@@ -192,20 +203,51 @@ const rows = clips.map((clip, i) => {
   feed.append(row);
   return row;
 });
+function bufferReady(video, requireEnd = false) {
+  if (!Number.isFinite(video.duration) || video.seeking) return false;
+  const time = video.currentTime;
+  for (let n = 0; n < video.buffered.length; n++) {
+    const end = video.buffered.end(n);
+    if (video.buffered.start(n) > time + 0.05 || end <= time) continue;
+    if (end >= video.duration - 0.15) return true;
+    // Mobile browsers may suspend media downloads once their buffer is full.
+    return !requireEnd && video.networkState === video.NETWORK_IDLE && end - time >= 8;
+  }
+  return false;
+}
+
+function releaseVideo(video) {
+  if (!video.hasAttribute('src')) return;
+  video.removeAttribute('src');
+  video.preload = 'none';
+  video.load();
+}
+
+function advancePreloadQueue(preempt = false) {
+  if (active < 0) return;
+  let ready = true;
+  for (let i = active; i < Math.min(rows.length, active + 3); i++) {
+    const video = rows[i].querySelector('video');
+    if (ready && !video.hasAttribute('src')) {
+      video.preload = 'auto';
+      video.src = mediaSource(clips[i]);
+    } else if (!ready && preempt && !bufferReady(video, true)) {
+      releaseVideo(video);
+    }
+    // A broken upcoming clip must not block its successor forever.
+    ready = ready && (bufferReady(video) || (i > active && Boolean(video.error)));
+  }
+}
+
 function activate(index) {
   if (index === active || !rows[index]) return;
   active = index;
   rows.forEach((row, i) => {
     const video = row.querySelector('video');
     if (i !== index) video.pause();
-    if (Math.abs(i - index) <= 1 && !video.hasAttribute('src')) {
-      video.preload = i === index ? 'auto' : 'metadata';
-      video.src = mediaSource(clips[i]);
-    } else if (Math.abs(i - index) > 1 && video.hasAttribute('src')) {
-      video.removeAttribute('src');
-      video.load();
-    }
+    if (i < index || i > index + 2) releaseVideo(video);
   });
+  advancePreloadQueue(true);
   const video = rows[index].querySelector('video');
   if (panel.open) {
     pausedForComments = null;
