@@ -65,8 +65,8 @@ function openComments(clip, video) {
   pausedForComments = video.paused ? null : video;
   video.pause();
   winkComments.open(clip);
-  positionDrawer(video);
   panel.show();
+  positionDrawer(video);
 }
 function closeComments() {
   panel.close();
