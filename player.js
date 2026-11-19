@@ -7,8 +7,23 @@ const shareDialog = document.querySelector('#share-dialog');
 const clips = window.WINK_CLIPS;
 const supportsAV1 = Boolean(document.createElement('video').canPlayType('video/mp4; codecs="av01.0.08M.10"'));
 const fallbackClips = new Set();
-function mediaSource(clip) {
-  return supportsAV1 && clip.av1 && !fallbackClips.has(clip.id) ? clip.av1 : clip.src;
+const resumeAt = new WeakMap();
+const localPlayback = location.protocol === 'file:';
+let measuredMbps = 0;
+let probeTimer;
+let currentProbe;
+let sampledWhilePaused = false;
+let stallTimer;
+let holdLightUntil = 0;
+
+function mediaSource(clip, currentSrc) {
+  const hdKey = supportsAV1 && clip.av1 && !fallbackClips.has(clip.id) ? 'av1' : 'src';
+  if (localPlayback || !clip.light) return clip[hdKey];
+  // A higher threshold for upgrades keeps marginal connections from oscillating.
+  const headroom = currentSrc === clip[hdKey] ? 1.15 : 1.65;
+  const canUseHD = !navigator.connection?.saveData && performance.now() >= holdLightUntil &&
+    measuredMbps >= clip[hdKey + 'Mbps'] * headroom;
+  return canUseHD ? clip[hdKey] : clip.light;
 }
 const prefs = 'wink-shorts-fisher.';
 const read = key => { try { return localStorage.getItem(prefs + key); } catch { return null; } };
@@ -145,14 +160,18 @@ const rows = clips.map((clip, i) => {
   video.onclick = toggle;
   video.addEventListener('play', () => {
     if (i !== active) return video.pause();
+    if (sampledWhilePaused) {
+      sampledWhilePaused = false;
+      scheduleProbe(350);
+    }
     icon(play, 'pause', 'Приостановить');
   });
   video.addEventListener('pause', () => icon(play, 'play', 'Воспроизвести'));
   video.addEventListener('error', () => {
-    if (!video.hasAttribute('src')) return;
+    if (!video.hasAttribute('src') || !video.error) return;
     if (clip.av1 && video.getAttribute('src') === clip.av1) {
       fallbackClips.add(clip.id);
-      video.src = clip.src;
+      video.src = mediaSource(clip);
       if (i === active && !shareDialog.open && !panel.open) start(video);
     } else {
       retry.hidden = false;
@@ -170,8 +189,16 @@ const rows = clips.map((clip, i) => {
       if (i === active && !bufferReady(video)) advancePreloadQueue(true);
     });
   }
+  video.addEventListener('waiting', () => watchHDStall(i, video));
+  video.addEventListener('playing', () => { if (i === active) clearTimeout(stallTimer); });
   retry.onclick = () => { video.src = mediaSource(clip); start(video); };
-  video.addEventListener('loadedmetadata', () => { if (Number.isFinite(video.duration)) seek.max = video.duration; });
+  video.addEventListener('loadedmetadata', () => {
+    if (Number.isFinite(video.duration)) seek.max = video.duration;
+    if (resumeAt.has(video)) {
+      video.currentTime = Math.min(resumeAt.get(video), video.duration);
+      resumeAt.delete(video);
+    }
+  });
   video.addEventListener('timeupdate', () => {
     if (!Number.isFinite(video.duration)) return;
     seek.value = video.currentTime;
@@ -203,6 +230,96 @@ const rows = clips.map((clip, i) => {
   feed.append(row);
   return row;
 });
+function refreshRenditions() {
+  if (active < 0) return;
+  for (let i = active; i < Math.min(active + 3, rows.length); i++) {
+    const video = rows[i].querySelector('video');
+    const src = video.getAttribute('src');
+    const next = mediaSource(clips[i], src);
+    if (!src || src === next) continue;
+    if (i !== active) {
+      releaseVideo(video);
+      continue;
+    }
+    const playing = !video.paused;
+    resumeAt.set(video, resumeAt.get(video) ?? video.currentTime);
+    video.src = next;
+    if (playing) start(video);
+  }
+  advancePreloadQueue(true);
+}
+
+// Sample a bounded range on the same media origin. No HD bytes are requested
+// to test a slow connection. Bypass the browser cache so a replay cannot inflate the result.
+async function measureConnection() {
+  if (currentProbe || document.hidden || active < 0 || navigator.connection?.saveData) return;
+  const paused = rows[active].querySelector('video').paused;
+  if (paused && sampledWhilePaused) return;
+  sampledWhilePaused = paused;
+  const controller = new AbortController();
+  currentProbe = controller;
+  const timeout = setTimeout(() => controller.abort(), 3500);
+  let mbps = 0;
+  try {
+    const started = performance.now();
+    const response = await fetch(clips[active].light, {
+      headers:{Range:'bytes=0-131071'}, cache:'no-store', signal:controller.signal
+    });
+    if (!response.ok || !response.body) throw new Error('Media sample unavailable');
+    const reader = response.body.getReader();
+    let bytes = 0, firstBytes = 0, firstAt = started;
+    while (bytes < 131072) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (!firstBytes) { firstBytes = bytes; firstAt = performance.now(); }
+      if (bytes >= 65536 && performance.now() - firstAt >= 400) break;
+    }
+    const end = performance.now();
+    if (bytes >= 65536) {
+      // Exclude handshake latency when several chunks actually arrived.
+      const multiChunk = bytes - firstBytes >= 32768 && end - firstAt >= 5;
+      mbps = 0.008 * (multiChunk ? bytes - firstBytes : bytes) /
+        Math.max(1, end - (multiChunk ? firstAt : started));
+    }
+    controller.abort(); // Also cap downloads on servers that ignore Range.
+  } catch { /* Timeout or an unreachable media origin keeps playback lightweight. */ }
+  finally { clearTimeout(timeout); }
+  if (currentProbe !== controller) return;
+  currentProbe = null;
+  measuredMbps = mbps;
+  refreshRenditions();
+  scheduleProbe(10000);
+}
+function scheduleProbe(delay) {
+  clearTimeout(probeTimer);
+  if (!localPlayback && !document.hidden && !navigator.connection?.saveData)
+    probeTimer = setTimeout(measureConnection, delay);
+}
+
+function resetMeasurement() {
+  currentProbe?.abort();
+  currentProbe = null;
+  sampledWhilePaused = false;
+  const hinted = navigator.connection?.downlink;
+  if (hinted > 0) measuredMbps = Math.min(measuredMbps, hinted);
+  refreshRenditions();
+  scheduleProbe(0);
+}
+navigator.connection?.addEventListener('change', resetMeasurement);
+
+function watchHDStall(i, video) {
+  if (i !== active || localPlayback || video.getAttribute('src') === clips[i].light) return;
+  clearTimeout(stallTimer);
+  stallTimer = setTimeout(() => {
+    if (i !== active || video.paused || video.readyState >= 3 || document.hidden) return;
+    measuredMbps = 0;
+    holdLightUntil = performance.now() + 8000;
+    refreshRenditions();
+    scheduleProbe(8100);
+  }, 2200);
+}
+
 function bufferReady(video, requireEnd = false) {
   if (!Number.isFinite(video.duration) || video.seeking) return false;
   const time = video.currentTime;
@@ -218,6 +335,7 @@ function bufferReady(video, requireEnd = false) {
 
 function releaseVideo(video) {
   if (!video.hasAttribute('src')) return;
+  resumeAt.delete(video);
   video.removeAttribute('src');
   video.preload = 'none';
   video.load();
@@ -241,6 +359,7 @@ function advancePreloadQueue(preempt = false) {
 
 function activate(index) {
   if (index === active || !rows[index]) return;
+  clearTimeout(stallTimer);
   active = index;
   rows.forEach((row, i) => {
     const video = row.querySelector('video');
@@ -339,6 +458,12 @@ document.addEventListener('keydown', event => {
   if (event.code === 'Space' && !event.target.closest('button,a')) { event.preventDefault(); rows[active]?.querySelector('.play').click(); }
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && active >= 0) rows[active].querySelector('video').pause();
+  if (document.hidden) {
+    clearTimeout(probeTimer);
+    currentProbe?.abort();
+    currentProbe = null;
+    if (active >= 0) rows[active].querySelector('video').pause();
+  } else scheduleProbe(0);
 });
 fromHash();
+scheduleProbe(350);
