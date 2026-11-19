@@ -114,3 +114,17 @@ header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .reply-target:not([hidden]){display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--thread-muted)}
 @media(max-width:620px){body:has(#panel[open]) #feed video{touch-action:pinch-zoom}#panel.drawer{inset:auto 0 6px auto;width:min(480px,calc(100vw - 12px));height:min(66dvh,640px)}}
 @media(prefers-reduced-motion:reduce){#panel.drawer[open]{animation:none}}
+
+.promo-poster{overflow:hidden;isolation:isolate;background:#211812;color:#fff9ef}
+.promo-photo{display:block;width:100%;height:74%;object-fit:cover;object-position:center 36%}
+.promo-poster::after{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;background:linear-gradient(to bottom,transparent 36%,rgba(33,24,18,.25) 50%,#211812 74%)}
+.promo-label,.promo-copy{position:absolute;z-index:1}
+.promo-label{top:max(18px,env(safe-area-inset-top));right:6%;padding:4px 10px;border-radius:20px;background:#171411ca;color:#fff;font-size:12px}
+.promo-copy{left:8%;right:8%;bottom:max(7%,calc(env(safe-area-inset-bottom) + 18px))}
+.promo-copy p{margin:0 0 4px;color:#ffd6ae;font-weight:600}
+.promo-copy h2{margin:0 0 .36em;font-size:clamp(52px,min(12vw,11vh),112px);line-height:1;letter-spacing:-.055em}
+.promo-link{display:inline-flex;align-items:center;gap:12px;min-height:46px;padding:9px 20px;color:#231407;background:#ff902e;border-radius:24px;font-weight:750;text-decoration:none}
+.promo-link:hover,.promo-link:focus-visible{background:#ffb167}
+.promo-link svg{width:1em;height:1em}
+
+@media(max-width:620px){.promo{touch-action:pinch-zoom}}

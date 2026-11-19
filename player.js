@@ -31,7 +31,9 @@ const save = (key, value) => { try { localStorage.setItem(prefs + key, value); }
 let muted = read('sound') !== 'on';
 let volume = Number(read('volume') ?? 0.8);
 if (!(volume > 0 && volume <= 1)) volume = 0.8;
-let active = -1;
+let active = -1; // Video index, or -1 while a poster is visible.
+let activePage = -1;
+let restoreComments = false;
 let pausedForComments = null;
 let pausedForShare = null;
 const icon = (button, name, label) => {
@@ -230,6 +232,16 @@ const rows = clips.map((clip, i) => {
   feed.append(row);
   return row;
 });
+const promoTemplate = document.querySelector('#promo');
+for (let count = 5; count <= rows.length; count += 5) {
+  const number = count / 5;
+  const poster = promoTemplate.content.firstElementChild.cloneNode(true);
+  poster.id = 'ad-' + number;
+  poster.querySelector('img').src = 'ads/fisher-' + number + '.webp';
+  rows[count - 1].after(poster);
+}
+const pages = Array.from(feed.children);
+
 function refreshRenditions() {
   if (active < 0) return;
   for (let i = active; i < Math.min(active + 3, rows.length); i++) {
@@ -357,10 +369,29 @@ function advancePreloadQueue(preempt = false) {
   }
 }
 
-function activate(index) {
-  if (index === active || !rows[index]) return;
+function activate(pageIndex) {
+  if (pageIndex === activePage || !pages[pageIndex]) return;
+  const wasPoster = activePage >= 0 && active < 0;
+  activePage = pageIndex;
   clearTimeout(stallTimer);
+  const index = rows.indexOf(pages[pageIndex]);
   active = index;
+  if (index < 0) {
+    clearTimeout(probeTimer);
+    currentProbe?.abort();
+    currentProbe = null;
+    if (!wasPoster) restoreComments = panel.open;
+    if (panel.open) panel.close();
+    pausedForComments = null;
+    const next = rows.indexOf(pages[pageIndex + 1]);
+    rows.forEach((row, i) => {
+      const video = row.querySelector('video');
+      video.pause();
+      if (next < 0 || i < next || i > next + 1) releaseVideo(video);
+    });
+    return;
+  }
+  if (wasPoster) scheduleProbe(350);
   rows.forEach((row, i) => {
     const video = row.querySelector('video');
     if (i !== index) video.pause();
@@ -368,16 +399,18 @@ function activate(index) {
   });
   advancePreloadQueue(true);
   const video = rows[index].querySelector('video');
-  if (panel.open) {
+  if (panel.open || restoreComments) {
+    restoreComments = false;
     pausedForComments = null;
     winkComments.open(clips[index], true);
+    if (!panel.open) panel.show();
     positionDrawer(video);
   }
   if (!shareDialog.open) start(video);
 }
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 function go(index, animate = false) {
-  const next = Math.max(0, Math.min(rows.length - 1, index));
+  const next = Math.max(0, Math.min(pages.length - 1, index));
   const smooth = animate && !reduceMotion.matches;
   feed.scrollTo({top: next * feed.clientHeight, behavior: smooth ? 'smooth' : 'instant'});
   if (!smooth) activate(next);
@@ -385,17 +418,18 @@ function go(index, animate = false) {
 function step(direction) {
   go(Math.round(feed.scrollTop / feed.clientHeight) + direction, true);
 }
-// The phone drawer leaves a short strip of video available for a swipe.
+// Handle one-page swipes on posters and on the strip above the mobile drawer.
 let swipeStart = null;
 feed.addEventListener('touchstart', event => {
-  swipeStart = panel.open && matchMedia('(max-width:620px)').matches &&
-    event.target.matches('video') && event.touches.length === 1 ? event.touches[0] : null;
+  const swipeArea = event.target.closest('.promo') || (panel.open && event.target.matches('video'));
+  swipeStart = swipeArea && matchMedia('(max-width:620px)').matches && event.touches.length === 1
+    ? event.touches[0] : null;
 }, {passive:true});
 feed.addEventListener('touchcancel', () => { swipeStart = null; });
 feed.addEventListener('touchend', event => {
   const start = swipeStart;
   swipeStart = null;
-  if (!start || !panel.open || event.touches.length) return;
+  if (!start || event.touches.length) return;
   const end = event.changedTouches[0];
   const dy = end.clientY - start.clientY;
   if (Math.abs(dy) < 35 || Math.abs(dy) <= Math.abs(end.clientX - start.clientX)) return;
@@ -427,8 +461,9 @@ feed.addEventListener('wheel', event => {
   }
 }, {passive:false});
 function fromHash() {
-  const id = new URLSearchParams(location.hash.slice(1)).get('video');
-  go(Math.max(0, clips.findIndex(clip => clip.id === id)));
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const target = hash.has('video') ? 'video-' + hash.get('video') : 'ad-' + hash.get('ad');
+  go(Math.max(0, pages.findIndex(page => page.id === target)));
 }
 let scheduled = false;
 feed.addEventListener('scroll', () => {
