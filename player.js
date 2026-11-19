@@ -159,7 +159,10 @@ const rows = clips.map((clip, i) => {
     else video.pause();
   };
   play.onclick = toggle;
-  video.onclick = toggle;
+  const screen = row.querySelector('.screen');
+  screen.addEventListener('click', event => {
+    if (event.target === screen || event.target === video) toggle();
+  });
   video.addEventListener('play', () => {
     if (i !== active) return video.pause();
     if (sampledWhilePaused) {
@@ -412,29 +415,42 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 function go(index, animate = false) {
   const next = Math.max(0, Math.min(pages.length - 1, index));
   const smooth = animate && !reduceMotion.matches;
-  feed.scrollTo({top: next * feed.clientHeight, behavior: smooth ? 'smooth' : 'instant'});
+  feed.scrollTo({top: next * feed.clientHeight, behavior: smooth ? 'smooth' : 'auto'});
   if (!smooth) activate(next);
 }
 function step(direction) {
   go(Math.round(feed.scrollTop / feed.clientHeight) + direction, true);
 }
-// Handle one-page swipes on posters and on the strip above the mobile drawer.
+// Handle the swipe on the page surface even when the inline video is paused or loading.
+const touchLayout = matchMedia('(pointer: coarse), (max-width: 620px)');
 let swipeStart = null;
 feed.addEventListener('touchstart', event => {
-  const swipeArea = event.target.closest('.promo') || (panel.open && event.target.matches('video'));
-  swipeStart = swipeArea && matchMedia('(max-width:620px)').matches && event.touches.length === 1
-    ? event.touches[0] : null;
+  swipeStart = null;
+  if (!touchLayout.matches || event.touches.length !== 1 || document.fullscreenElement ||
+      event.target.closest('input, select, textarea') || shareDialog.open) return;
+  const page = event.target.closest('.reel');
+  if (!page) return;
+  const touch = event.touches[0];
+  swipeStart = {x:touch.clientX, y:touch.clientY, id:touch.identifier, index:pages.indexOf(page)};
 }, {passive:true});
+feed.addEventListener('touchmove', event => {
+  if (!swipeStart) return;
+  if (event.touches.length !== 1) { swipeStart = null; return; }
+  const touch = event.touches[0];
+  const dy = Math.abs(touch.clientY - swipeStart.y);
+  if (event.cancelable && dy > 8 && dy > Math.abs(touch.clientX - swipeStart.x)) event.preventDefault();
+}, {passive:false});
 feed.addEventListener('touchcancel', () => { swipeStart = null; });
 feed.addEventListener('touchend', event => {
   const start = swipeStart;
   swipeStart = null;
   if (!start || event.touches.length) return;
-  const end = event.changedTouches[0];
-  const dy = end.clientY - start.clientY;
-  if (Math.abs(dy) < 35 || Math.abs(dy) <= Math.abs(end.clientX - start.clientX)) return;
-  event.preventDefault();
-  step(dy < 0 ? 1 : -1);
+  const touch = event.changedTouches[0];
+  if (!touch || touch.identifier !== start.id) return;
+  const dy = touch.clientY - start.y;
+  if (Math.abs(dy) < 35 || Math.abs(dy) <= Math.abs(touch.clientX - start.x)) return;
+  if (event.cancelable) event.preventDefault();
+  requestAnimationFrame(() => go(start.index + (dy < 0 ? 1 : -1), true));
 }, {passive:false});
 // Wheel bursts include trackpad inertia. Page once and let the scroll settle.
 let wheelDistance = 0;
